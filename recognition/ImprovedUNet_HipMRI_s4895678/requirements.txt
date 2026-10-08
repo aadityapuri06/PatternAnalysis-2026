@@ -1,0 +1,6 @@
+# Python X.X.X (record here for reproducibility)
+torch==2.14.0
+numpy==2.5.3
+matplotlib==3.11.2
+nibabel==X.X.X
+tqdm==X.X.X
