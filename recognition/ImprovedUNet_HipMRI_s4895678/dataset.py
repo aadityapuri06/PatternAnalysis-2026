@@ -92,6 +92,91 @@ def check_no_leakage(split):
     assert not bad, f"Patients in more than one split: {bad}"
 
 
+import numpy as np
+import nibabel as nib
+import torch
+from torch.utils.data import Dataset
+
+DEPTH = 128    # every volume is cropped or padded to this many slices
+PROSTATE = 5   # label value for the prostate (inferred from the audit)
+
+
+def fix_depth(arr, depth=DEPTH):
+    """Centre-crop or zero-pad the slice axis (axis 2) to `depth` slices."""
+    d = arr.shape[2]
+    if d > depth:
+        start = (d - depth) // 2
+        return arr[:, :, start:start + depth]
+    if d < depth:
+        pad = depth - d
+        before = pad // 2
+        return np.pad(arr, ((0, 0), (0, 0), (before, pad - before)))
+    return arr
+
+
+def load_case(case):
+    """Load one scan: returns (image float32 [D,H,W] z-scored, label uint8 [D,H,W])."""
+    img = np.asarray(nib.load(image_path(case)).dataobj).astype(np.float32)
+    lab = np.asarray(nib.load(label_path(case)).dataobj).astype(np.uint8)
+    if img.ndim == 4:        # some files carry an extra trailing dimension
+        img = img[..., 0]
+    if lab.ndim == 4:
+        lab = lab[..., 0]
+    img, lab = fix_depth(img), fix_depth(lab)
+    img = (img - img.mean()) / (img.std() + 1e-8)
+    # (H, W, D) -> (D, H, W) so that img[z] is one axial slice
+    return (np.ascontiguousarray(img.transpose(2, 0, 1)),
+            np.ascontiguousarray(lab.transpose(2, 0, 1)))
+
+
+class HipMRI3D(Dataset):
+    """Whole volumes for the 3D model: image [1,D,H,W], label [D,H,W]."""
+
+    def __init__(self, split, name):
+        self.cases = sorted(c for c, s in split.items() if s == name)
+
+    def __len__(self):
+        return len(self.cases)
+
+    def __getitem__(self, i):
+        img, lab = load_case(self.cases[i])
+        return torch.from_numpy(img)[None], torch.from_numpy(lab.astype(np.int64))
+
+
+class HipMRI2D(Dataset):
+    """Axial slices for the 2D baseline: image [1,H,W], label [H,W].
+
+    empty_ratio=None keeps EVERY slice (use for val/test, so predictions can be
+    stacked back into whole volumes). A number such as 0.25 keeps all prostate
+    slices plus that many randomly chosen prostate-free slices per prostate
+    slice (use for training, so the model also learns what 'no prostate' looks like).
+    """
+
+    def __init__(self, split, name, empty_ratio=None, seed=0):
+        self.cases = sorted(c for c, s in split.items() if s == name)
+        self.imgs, self.labs, self.index = [], [], []
+        rng = random.Random(seed)
+        for k, case in enumerate(self.cases):
+            img, lab = load_case(case)
+            self.imgs.append(img.astype(np.float16))   # halves memory
+            self.labs.append(lab)
+            has = (lab == PROSTATE).any(axis=(1, 2))
+            pos = np.flatnonzero(has).tolist()
+            neg = np.flatnonzero(~has).tolist()
+            if empty_ratio is not None:
+                neg = rng.sample(neg, min(len(neg), int(empty_ratio * len(pos))))
+            self.index += [(k, z) for z in sorted(pos + neg)]
+
+    def __len__(self):
+        return len(self.index)
+
+    def __getitem__(self, i):
+        k, z = self.index[i]
+        x = torch.from_numpy(self.imgs[k][z].astype(np.float32))[None]
+        y = torch.from_numpy(self.labs[k][z].astype(np.int64))
+        return x, y
+
+
 if __name__ == "__main__":
     split = make_split()
     check_no_leakage(split)
