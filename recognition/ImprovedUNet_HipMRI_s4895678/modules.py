@@ -65,3 +65,100 @@ class UNet2D(nn.Module):
             x = up(x)
             x = dec(torch.cat([skip, x], dim=1))
         return self.head(x)
+
+
+# ---------------------------------------------------------------------------
+# Improved U-Net (Isensee et al., 2018, "Brain Tumor Segmentation and Radiomics
+# Survival Prediction: Contribution to the BRATS 2017 Challenge").
+# One class builds the 2D or 3D version through the `dim` argument.
+# Simplification: our context module is post-activation (conv-norm-act), where
+# the paper uses a pre-activation residual block.
+# ---------------------------------------------------------------------------
+def _layers(dim):
+    """Return the (Conv, InstanceNorm, Dropout) layer classes for dim 2 or 3."""
+    if dim == 2:
+        return nn.Conv2d, nn.InstanceNorm2d, nn.Dropout2d
+    if dim == 3:
+        return nn.Conv3d, nn.InstanceNorm3d, nn.Dropout3d
+    raise ValueError("dim must be 2 or 3")
+
+
+class ConvNormAct(nn.Module):
+    """Convolution -> instance norm -> leaky ReLU."""
+
+    def __init__(self, in_ch, out_ch, dim, kernel=3, stride=1):
+        super().__init__()
+        Conv, Norm, _ = _layers(dim)
+        self.block = nn.Sequential(
+            Conv(in_ch, out_ch, kernel, stride=stride, padding=kernel // 2, bias=False),
+            Norm(out_ch, affine=True),
+            nn.LeakyReLU(0.01, inplace=True),
+        )
+
+    def forward(self, x):
+        return self.block(x)
+
+
+class ContextModule(nn.Module):
+    """Two convolutions with dropout between them, plus a residual connection."""
+
+    def __init__(self, ch, dim, p_drop=0.3):
+        super().__init__()
+        _, _, Drop = _layers(dim)
+        self.body = nn.Sequential(
+            ConvNormAct(ch, ch, dim), Drop(p_drop), ConvNormAct(ch, ch, dim))
+
+    def forward(self, x):
+        return x + self.body(x)          # residual: the input is added back
+
+
+class ImprovedUNet(nn.Module):
+    """Improved U-Net with stride-2 downsampling, context modules, localization
+    modules and deep supervision (segmentation maps from the last decoder levels
+    are upsampled and summed). Returns logits [B, num_classes, *spatial].
+
+    Spatial sizes must be divisible by 2**(depth-1).
+    """
+
+    def __init__(self, dim=2, in_channels=1, num_classes=6, base=32, depth=5, p_drop=0.3):
+        super().__init__()
+        Conv, _, _ = _layers(dim)
+        self.depth = depth
+        chs = [base * 2 ** i for i in range(depth)]
+
+        # Encoder: stem, then (stride-2 conv + context module) per level
+        self.stem = ConvNormAct(in_channels, chs[0], dim)
+        self.ctx = nn.ModuleList([ContextModule(c, dim, p_drop) for c in chs])
+        self.down = nn.ModuleList(
+            [ConvNormAct(chs[i - 1], chs[i], dim, stride=2) for i in range(1, depth)])
+
+        # Decoder: upsample + conv, concatenate skip, localization module
+        self.up, self.loc = nn.ModuleList(), nn.ModuleList()
+        for i in range(depth - 2, -1, -1):
+            self.up.append(nn.Sequential(
+                nn.Upsample(scale_factor=2, mode="nearest"),
+                ConvNormAct(chs[i + 1], chs[i], dim)))
+            self.loc.append(nn.Sequential(
+                ConvNormAct(2 * chs[i], chs[i], dim),
+                ConvNormAct(chs[i], chs[i], dim, kernel=1)))
+
+        # Deep supervision: a 1x1 segmentation head on the last decoder levels
+        self.n_seg = min(3, depth - 1)
+        self.seg = nn.ModuleList([Conv(chs[i], num_classes, 1) for i in range(self.n_seg)])
+        self.up_seg = nn.Upsample(scale_factor=2, mode="nearest")
+
+    def forward(self, x):
+        x = self.ctx[0](self.stem(x))
+        skips = [x]
+        for i in range(1, self.depth):
+            x = self.ctx[i](self.down[i - 1](x))
+            skips.append(x)
+
+        total = None
+        for j, (up, loc) in enumerate(zip(self.up, self.loc)):
+            level = self.depth - 2 - j
+            x = loc(torch.cat([skips[level], up(x)], dim=1))
+            if level < self.n_seg:
+                s = self.seg[level](x)
+                total = s if total is None else self.up_seg(total) + s
+        return total

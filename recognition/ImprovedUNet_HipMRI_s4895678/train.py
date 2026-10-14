@@ -19,7 +19,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from dataset import HipMRI2D, load_split, patient_of
-from modules import UNet2D
+from modules import UNet2D, ImprovedUNet
 
 NUM_CLASSES = 6   # 0 background, 1 body, 2 bone, 3 bladder, 4 rectum, 5 prostate
 PROSTATE = 5
@@ -28,6 +28,8 @@ PROSTATE = 5
 def build_model(name):
     if name == "unet2d":
         return UNet2D()
+    if name == "improved2d":
+        return ImprovedUNet(dim=2, base=32, depth=5)
     raise ValueError(f"unknown model: {name}")
 
 
