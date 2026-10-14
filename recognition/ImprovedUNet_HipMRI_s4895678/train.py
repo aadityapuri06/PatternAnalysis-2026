@@ -55,7 +55,7 @@ def evaluate(model, ds, device, bs=16):
     can be pooled back into whole volumes.
     """
     model.eval()
-    loader = DataLoader(ds, batch_size=bs, shuffle=False, num_workers=2)
+    loader = DataLoader(ds, batch_size=bs, shuffle=False, num_workers=0)
     n_vol = len(ds.cases)
     inter = torch.zeros(n_vol, NUM_CLASSES)
     psum = torch.zeros(n_vol, NUM_CLASSES)
@@ -119,7 +119,7 @@ def main():
     train_ds = HipMRI2D(split, "train", empty_ratio=args.empty_ratio, seed=args.seed)
     val_ds = HipMRI2D(split, "val", empty_ratio=None)
     train_loader = DataLoader(train_ds, batch_size=args.bs, shuffle=True,
-                              drop_last=True, num_workers=2)
+                              drop_last=True, num_workers=0)
     print(f"train slices: {len(train_ds)} | val slices: {len(val_ds)}")
 
     model = build_model(args.model).to(device)
