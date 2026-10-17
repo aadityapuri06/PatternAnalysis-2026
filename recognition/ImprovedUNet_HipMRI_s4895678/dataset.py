@@ -177,6 +177,31 @@ class HipMRI2D(Dataset):
         return x, y
 
 
+
+
+class HipMRI3DCached(Dataset):
+    """Whole volumes for the 3D model, loaded into RAM once (image float16, label uint8).
+
+    Returns image [1,D,H,W] float32 and label [D,H,W] int64.
+    """
+
+    def __init__(self, split, name):
+        self.cases = sorted(c for c, s in split.items() if s == name)
+        self.imgs, self.labs = [], []
+        for case in self.cases:
+            img, lab = load_case(case)
+            self.imgs.append(img.astype(np.float16))   # halves memory
+            self.labs.append(lab)
+
+    def __len__(self):
+        return len(self.cases)
+
+    def __getitem__(self, i):
+        x = torch.from_numpy(self.imgs[i].astype(np.float32))[None]
+        y = torch.from_numpy(self.labs[i].astype(np.int64))
+        return x, y
+
+
 if __name__ == "__main__":
     split = make_split()
     check_no_leakage(split)

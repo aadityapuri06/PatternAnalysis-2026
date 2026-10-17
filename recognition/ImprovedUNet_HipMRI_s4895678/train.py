@@ -18,26 +18,28 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-from dataset import HipMRI2D, load_split, patient_of
+from dataset import HipMRI2D, HipMRI3DCached, load_split, patient_of
 from modules import UNet2D, ImprovedUNet
 
 NUM_CLASSES = 6   # 0 background, 1 body, 2 bone, 3 bladder, 4 rectum, 5 prostate
 PROSTATE = 5
 
 
-def build_model(name):
+def build_model(name, base3d=16):
     if name == "unet2d":
         return UNet2D()
     if name == "improved2d":
         return ImprovedUNet(dim=2, base=32, depth=5)
+    if name == "improved3d":
+        return ImprovedUNet(dim=3, base=base3d, depth=5)
     raise ValueError(f"unknown model: {name}")
 
 
 def dice_loss(logits, target, eps=1e-6):
     """Soft Dice loss averaged over the foreground classes 1..5."""
     probs = torch.softmax(logits, dim=1)
-    onehot = F.one_hot(target, NUM_CLASSES).permute(0, 3, 1, 2).float()
-    dims = (0, 2, 3)                                  # pool over batch, height, width
+    onehot = F.one_hot(target, NUM_CLASSES).movedim(-1, 1).float()
+    dims = (0,) + tuple(range(2, probs.ndim))                                  # pool over batch, height, width
     inter = (probs * onehot).sum(dims)
     denom = probs.sum(dims) + onehot.sum(dims)
     dice = (2 * inter + eps) / (denom + eps)          # one value per class
@@ -75,6 +77,22 @@ def evaluate(model, ds, device, bs=16):
     return (2 * inter + 1e-6) / (psum + tsum + 1e-6)
 
 
+@torch.no_grad()
+def evaluate3d(model, ds, device):
+    """Per-volume Dice for each class for a 3D model: returns [n_volumes, 6]."""
+    model.eval()
+    out = []
+    for i in range(len(ds)):
+        x, y = ds[i]
+        pred = model(x[None].to(device)).argmax(1)[0].cpu()
+        p = F.one_hot(pred, NUM_CLASSES)
+        t = F.one_hot(y, NUM_CLASSES)
+        inter = (p & t).sum((0, 1, 2)).float()
+        out.append((2 * inter + 1e-6) /
+                   (p.sum((0, 1, 2)).float() + t.sum((0, 1, 2)).float() + 1e-6))
+    return torch.stack(out)
+
+
 def plot_history(history, path):
     ep = [h["epoch"] for h in history]
     fig, ax = plt.subplots(1, 2, figsize=(11, 4))
@@ -100,8 +118,13 @@ def main():
     ap.add_argument("--max_cases", type=int, default=0,
                     help="debug: keep only N volumes per split")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--base3d", type=int, default=16, help="base filters of the 3D model")
     args = ap.parse_args()
 
+    is3d = args.model.endswith("3d")
+    evaluate_fn = evaluate3d if is3d else evaluate
+    if is3d:
+        args.bs = 1          # whole volumes: one per step
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -118,13 +141,14 @@ def main():
         split = kept
 
     print("loading data ...")
-    train_ds = HipMRI2D(split, "train", empty_ratio=args.empty_ratio, seed=args.seed)
-    val_ds = HipMRI2D(split, "val", empty_ratio=None)
+    train_ds = (HipMRI3DCached(split, "train") if is3d else
+                HipMRI2D(split, "train", empty_ratio=args.empty_ratio, seed=args.seed))
+    val_ds = HipMRI3DCached(split, "val") if is3d else HipMRI2D(split, "val", empty_ratio=None)
     train_loader = DataLoader(train_ds, batch_size=args.bs, shuffle=True,
                               drop_last=True, num_workers=0)
     print(f"train slices: {len(train_ds)} | val slices: {len(val_ds)}")
 
-    model = build_model(args.model).to(device)
+    model = build_model(args.model, args.base3d).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
@@ -142,8 +166,9 @@ def main():
             x, y = x.to(device), y.to(device)
             # Augmentation: random flip along the height axis (patient left-right)
             flip = torch.rand(x.shape[0], device=device) < 0.5
-            x = torch.where(flip[:, None, None, None], x.flip(2), x)
-            y = torch.where(flip[:, None, None], y.flip(1), y)
+            ax = x.ndim - 2     # height axis: 2 for [B,1,H,W], 3 for [B,1,D,H,W]
+            x = torch.where(flip.view(-1, *([1] * (x.ndim - 1))), x.flip(ax), x)
+            y = torch.where(flip.view(-1, *([1] * (y.ndim - 1))), y.flip(ax - 1), y)
             loss = combined_loss(model(x), y)
             opt.zero_grad()
             loss.backward()
@@ -152,7 +177,7 @@ def main():
             n += x.shape[0]
         sched.step()
 
-        dice = evaluate(model, val_ds, device)
+        dice = evaluate_fn(model, val_ds, device)
         row = {"epoch": epoch, "train_loss": total / n,
                "val_prostate_dice": dice[:, PROSTATE].mean().item(),
                "val_mean_dice": dice[:, 1:].mean().item(),
@@ -174,8 +199,8 @@ def main():
 
     # ---- final test with the best checkpoint ----
     model.load_state_dict(torch.load(ckpt, map_location=device))
-    test_ds = HipMRI2D(split, "test", empty_ratio=None)
-    dice = evaluate(model, test_ds, device)
+    test_ds = HipMRI3DCached(split, "test") if is3d else HipMRI2D(split, "test", empty_ratio=None)
+    dice = evaluate_fn(model, test_ds, device)
     with open(f"results/{args.model}_test_per_volume.csv", "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["case", "patient"] + [f"dice_class{c}" for c in range(NUM_CLASSES)])
