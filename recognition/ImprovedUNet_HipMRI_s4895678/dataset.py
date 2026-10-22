@@ -1,12 +1,18 @@
 """Data loading for the HipMRI prostate segmentation project.
 
-Part 1 (this commit): leakage-free, patient-level stratified train/val/test split.
-Volume loading follows the NIfTI approach in the COMP3710 task sheet, Appendix B.
+Provides a leakage-free, patient-level stratified train/val/test split, NIfTI
+volume loading (following the COMP3710 task sheet, Appendix B), the 2D and 3D
+Dataset classes, and the random-flip augmentation used during training.
 """
 import csv
 import os
 import random
 from collections import defaultdict
+
+import nibabel as nib
+import numpy as np
+import torch
+from torch.utils.data import Dataset
 
 DATA_DIR = "/home/groups/comp3710/HipMRI_Study_open"
 IMAGE_DIR = f"{DATA_DIR}/semantic_MRs"
@@ -92,11 +98,6 @@ def check_no_leakage(split):
     assert not bad, f"Patients in more than one split: {bad}"
 
 
-import numpy as np
-import nibabel as nib
-import torch
-from torch.utils.data import Dataset
-
 DEPTH = 128    # every volume is cropped or padded to this many slices
 PROSTATE = 5   # label value for the prostate (inferred from the audit)
 
@@ -127,6 +128,20 @@ def load_case(case):
     # (H, W, D) -> (D, H, W) so that img[z] is one axial slice
     return (np.ascontiguousarray(img.transpose(2, 0, 1)),
             np.ascontiguousarray(lab.transpose(2, 0, 1)))
+
+
+def random_flip(x, y):
+    """Augmentation: flip each sample along the height axis with probability 0.5.
+
+    Works on a batch for both models: x is [B,1,H,W] (2D) or [B,1,D,H,W] (3D)
+    and y is [B,H,W] or [B,D,H,W]. Image and label are always flipped together,
+    so they stay aligned. The height axis is the patient's left-right direction.
+    """
+    flip = torch.rand(x.shape[0], device=x.device) < 0.5
+    ax = x.ndim - 2     # height axis of x: 2 for [B,1,H,W], 3 for [B,1,D,H,W]
+    x = torch.where(flip.view(-1, *([1] * (x.ndim - 1))), x.flip(ax), x)
+    y = torch.where(flip.view(-1, *([1] * (y.ndim - 1))), y.flip(ax - 1), y)
+    return x, y
 
 
 class HipMRI3D(Dataset):

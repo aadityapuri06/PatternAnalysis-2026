@@ -18,6 +18,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
+from dataset import random_flip
 from dataset import HipMRI2D, HipMRI3DCached, load_split, patient_of
 from modules import UNet2D, ImprovedUNet
 
@@ -166,11 +167,7 @@ def main():
         t0, total, n = time.time(), 0.0, 0
         for x, y in train_loader:
             x, y = x.to(device), y.to(device)
-            # Augmentation: random flip along the height axis (patient left-right)
-            flip = torch.rand(x.shape[0], device=device) < 0.5
-            ax = x.ndim - 2     # height axis: 2 for [B,1,H,W], 3 for [B,1,D,H,W]
-            x = torch.where(flip.view(-1, *([1] * (x.ndim - 1))), x.flip(ax), x)
-            y = torch.where(flip.view(-1, *([1] * (y.ndim - 1))), y.flip(ax - 1), y)
+            x, y = random_flip(x, y)    # augmentation lives in dataset.py
             loss = combined_loss(model(x), y)
             opt.zero_grad()
             loss.backward()
