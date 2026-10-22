@@ -119,12 +119,14 @@ def main():
                     help="debug: keep only N volumes per split")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--base3d", type=int, default=16, help="base filters of the 3D model")
+    ap.add_argument("--tag", default="", help="suffix for output files, e.g. matched")
     args = ap.parse_args()
 
     is3d = args.model.endswith("3d")
     evaluate_fn = evaluate3d if is3d else evaluate
     if is3d:
         args.bs = 1          # whole volumes: one per step
+    name = args.model + (f"_{args.tag}" if args.tag else "")   # output file prefix
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -155,7 +157,7 @@ def main():
 
     for d in ("checkpoints", "results", "images"):
         os.makedirs(d, exist_ok=True)
-    ckpt = f"checkpoints/{args.model}_best.pth"
+    ckpt = f"checkpoints/{name}_best.pth"
     history, best = [], -1.0
     t_start = time.time()
 
@@ -191,17 +193,17 @@ def main():
             torch.save(model.state_dict(), ckpt)
 
     train_time = time.time() - t_start
-    with open(f"results/{args.model}_history.csv", "w", newline="") as f:
+    with open(f"results/{name}_history.csv", "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(history[0].keys()))
         w.writeheader()
         w.writerows(history)
-    plot_history(history, f"images/{args.model}_curves.png")
+    plot_history(history, f"images/{name}_curves.png")
 
     # ---- final test with the best checkpoint ----
     model.load_state_dict(torch.load(ckpt, map_location=device))
     test_ds = HipMRI3DCached(split, "test") if is3d else HipMRI2D(split, "test", empty_ratio=None)
     dice = evaluate_fn(model, test_ds, device)
-    with open(f"results/{args.model}_test_per_volume.csv", "w", newline="") as f:
+    with open(f"results/{name}_test_per_volume.csv", "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["case", "patient"] + [f"dice_class{c}" for c in range(NUM_CLASSES)])
         for case, d in zip(test_ds.cases, dice.tolist()):
