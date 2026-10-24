@@ -1,0 +1,93 @@
+"""Summarise repeated runs into README tables (mean +- std over seeds).
+
+Reads results/<run>_test_per_volume.csv (written by train.py) and
+results/<run>_analysis.csv (written by predict.py --analyse); runs whose files
+do not exist yet are skipped. Writes results/summary.md.
+"""
+import csv
+import os
+import statistics as st
+
+GROUPS = {
+    "2D U-Net (baseline)": ["unet2d", "unet2d_s1", "unet2d_s2"],
+    "2D Improved U-Net": ["improved2d", "improved2d_s1", "improved2d_s2"],
+    "3D Improved U-Net (matched settings)": ["improved3d_matched", "improved3d_matched_s1", "improved3d_matched_s2"],
+    "3D Improved U-Net (lr 5e-4, 50 epochs)": ["improved3d"],
+    "2D Improved U-Net (lr 5e-4)": ["improved2d_lr5e4"],
+}
+PATIENTS = ["B006", "G021", "K018", "S035", "T009", "W029"]
+
+
+def read(path):
+    if not os.path.exists(path):
+        return None
+    with open(path) as f:
+        return list(csv.DictReader(f))
+
+
+def mean(xs):
+    return sum(xs) / len(xs)
+
+
+def fmt(xs):
+    """mean +- sample std; the std is only a rough guide with so few runs."""
+    if not xs:
+        return "n/a"
+    if len(xs) == 1:
+        return f"{xs[0]:.3f} (1 run)"
+    return f"{mean(xs):.3f} ± {st.stdev(xs):.3f} (n={len(xs)})"
+
+
+def per_volume(run):
+    return read(f"results/{run}_test_per_volume.csv")
+
+
+def analysis_mean(run, key):
+    rows = read(f"results/{run}_analysis.csv")
+    return None if rows is None else mean([float(r[key]) for r in rows])
+
+
+out = []
+
+out += ["## Test prostate Dice (mean over the 28 test volumes, per run)", "",
+        "| Model | Runs | Mean ± std over runs |", "|---|---|---|"]
+patient_means = {}
+for group, runs in GROUPS.items():
+    vals, by_patient = [], {}
+    for run in runs:
+        rows = per_volume(run)
+        if rows is None:
+            continue
+        vals.append(mean([float(r["dice_class5"]) for r in rows]))
+        for r in rows:
+            by_patient.setdefault(r["patient"], {}).setdefault(run, []).append(float(r["dice_class5"]))
+    patient_means[group] = {p: mean([mean(v) for v in d.values()]) for p, d in by_patient.items()}
+    out.append(f"| {group} | {', '.join(f'{v:.3f}' for v in vals) or 'n/a'} | {fmt(vals)} |")
+
+out += ["", "## Prostate Dice per test patient (mean over runs)", "",
+        "| Model | " + " | ".join(PATIENTS) + " |", "|---|" + "---|" * len(PATIENTS)]
+for group, pm in patient_means.items():
+    out.append(f"| {group} | " + " | ".join(f"{pm[p]:.3f}" if p in pm else "n/a" for p in PATIENTS) + " |")
+base, three_d = patient_means.get("2D U-Net (baseline)", {}), patient_means.get("3D Improved U-Net (matched settings)", {})
+if base and three_d:
+    wins = sum(three_d[p] > base[p] for p in PATIENTS if p in base and p in three_d)
+    out += ["", f"3D (matched) beats the 2D baseline on {wins} of {len(PATIENTS)} test patients."]
+
+out += ["", "## Dice by prostate third, rectum/bladder leakage and inference time (from predict.py --analyse)", "",
+        "| Model | Base | Middle | Apex | Leak rectum % | Leak bladder % | s / volume |", "|---|---|---|---|---|---|---|"]
+for group, runs in GROUPS.items():
+    cells = []
+    for key in ("dice_base", "dice_middle", "dice_apex"):
+        vals = [v for v in (analysis_mean(r, key) for r in runs) if v is not None]
+        cells.append(fmt(vals))
+    for key in ("leak_rectum", "leak_bladder"):
+        vals = [v * 100 for v in (analysis_mean(r, key) for r in runs) if v is not None]
+        cells.append(f"{mean(vals):.2f}" if vals else "n/a")
+    vals = [v for v in (analysis_mean(r, "seconds") for r in runs) if v is not None]
+    cells.append(f"{mean(vals):.2f}" if vals else "n/a")
+    out.append(f"| {group} | " + " | ".join(cells) + " |")
+
+text = "\n".join(out) + "\n"
+with open("results/summary.md", "w") as f:
+    f.write(text)
+print(text)
