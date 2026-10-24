@@ -3,6 +3,7 @@
 Examples (run from this folder):
   python predict.py --model unet2d --analyse
   python predict.py --model improved3d --figures W029_Week5 G021_Week5
+  python predict.py --model improved3d --tag matched_s1 --analyse   # a repeat run
 Loads checkpoints/<model>_best.pth, predicts whole test volumes, prints Dice,
 Dice by prostate third (base/middle/apex), leakage, and saves 4-panel figures.
 """
@@ -34,9 +35,11 @@ def build(name, base3d=16):
     raise ValueError(f"unknown model: {name}")
 
 
-def load_model(name, device, base3d=16):
+def load_model(name, device, base3d=16, tag=""):
+    """Load checkpoints/<name>[_<tag>]_best.pth (tag marks a repeat run, e.g. matched_s1)."""
     model = build(name, base3d).to(device)
-    model.load_state_dict(torch.load(f"checkpoints/{name}_best.pth", map_location=device))
+    suffix = f"_{tag}" if tag else ""
+    model.load_state_dict(torch.load(f"checkpoints/{name}{suffix}_best.pth", map_location=device))
     return model.eval()
 
 
@@ -80,7 +83,7 @@ def prostate_thirds(lab):
     return {"base": low, "middle": mid, "apex": high}, zs
 
 
-def analyse(model, name, device, split_name="test"):
+def analyse(model, name, device, split_name="test", tag=""):
     split = load_split()
     cases = sorted(c for c, s in split.items() if s == split_name)
     rows = []
@@ -111,7 +114,7 @@ def analyse(model, name, device, split_name="test"):
               f"rectum leak {row['leak_rectum']:.3f}")
 
     os.makedirs("results", exist_ok=True)
-    with open(f"results/{name}_analysis.csv", "w", newline="") as f:
+    with open(f"results/{name}{'_' + tag if tag else ''}_analysis.csv", "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         w.writeheader()
         w.writerows(rows)
@@ -123,7 +126,7 @@ def analyse(model, name, device, split_name="test"):
     return rows
 
 
-def four_panel(model, name, device, case, z=None, rotate=True, outdir="images"):
+def four_panel(model, name, device, case, z=None, rotate=True, outdir="images", tag=""):
     """Save input / ground truth / prediction / error overlay for one slice."""
     img, lab = load_case(case)
     pred = predict_volume(model, name, img, device)
@@ -150,7 +153,7 @@ def four_panel(model, name, device, case, z=None, rotate=True, outdir="images"):
     ax[3].imshow(show(err))
     ax[3].set_title(f"slice Dice {dice(pr_p[z], gt_p[z]):.2f}: red FP, blue FN")
     os.makedirs(outdir, exist_ok=True)
-    path = f"{outdir}/{name}_{case}_z{z}.png"
+    path = f"{outdir}/{name}{'_' + tag if tag else ''}_{case}_z{z}.png"
     plt.savefig(path, dpi=100, bbox_inches="tight")
     plt.close(fig)
     print(f"saved {path} | whole-volume prostate Dice {dice(pr_p, gt_p):.3f}")
@@ -164,16 +167,17 @@ def main():
     ap.add_argument("--z", type=int, default=None, help="slice to draw (default: worst)")
     ap.add_argument("--split", default="test")
     ap.add_argument("--base3d", type=int, default=16)
+    ap.add_argument("--tag", default="", help="suffix used in training, e.g. matched_s1")
     ap.add_argument("--no-rotate", action="store_true", help="draw in array orientation")
     args = ap.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("device:", device)
-    model = load_model(args.model, device, args.base3d)
+    model = load_model(args.model, device, args.base3d, args.tag)
     if args.analyse:
-        analyse(model, args.model, device, args.split)
+        analyse(model, args.model, device, args.split, args.tag)
     for case in args.figures:
-        four_panel(model, args.model, device, case, args.z, not args.no_rotate)
+        four_panel(model, args.model, device, case, args.z, not args.no_rotate, tag=args.tag)
 
 
 if __name__ == "__main__":
