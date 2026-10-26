@@ -3,6 +3,8 @@
 Only PyTorch is imported here (no NumPy), as required by the task sheet.
 Baseline: the 2D U-Net of Ronneberger et al. (2015), U-Net: Convolutional
 Networks for Biomedical Image Segmentation, MICCAI.
+Also the Improved U-Net (ImprovedUNet, dim=2 or 3): Isensee et al. (2018), with 3D
+convolutions in the manner of Cicek et al. (2016), 3D U-Net.
 """
 import torch
 import torch.nn as nn

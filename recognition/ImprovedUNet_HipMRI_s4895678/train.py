@@ -18,8 +18,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-from dataset import random_flip
-from dataset import HipMRI2D, HipMRI3DCached, load_split, patient_of
+from dataset import HipMRI2D, HipMRI3DCached, load_split, patient_of, random_flip
 from modules import UNet2D, ImprovedUNet
 
 NUM_CLASSES = 6   # 0 background, 1 body, 2 bone, 3 bladder, 4 rectum, 5 prostate
@@ -40,7 +39,7 @@ def dice_loss(logits, target, eps=1e-6):
     """Soft Dice loss averaged over the foreground classes 1..5."""
     probs = torch.softmax(logits, dim=1)
     onehot = F.one_hot(target, NUM_CLASSES).movedim(-1, 1).float()
-    dims = (0,) + tuple(range(2, probs.ndim))                                  # pool over batch, height, width
+    dims = (0,) + tuple(range(2, probs.ndim))                                  # pool over batch and all spatial axes
     inter = (probs * onehot).sum(dims)
     denom = probs.sum(dims) + onehot.sum(dims)
     dice = (2 * inter + eps) / (denom + eps)          # one value per class

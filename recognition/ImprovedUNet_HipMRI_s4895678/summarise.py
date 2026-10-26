@@ -87,6 +87,16 @@ for group, runs in GROUPS.items():
     cells.append(f"{mean(vals):.2f}" if vals else "n/a")
     out.append(f"| {group} | " + " | ".join(cells) + " |")
 
+out += ["", "## Per-class Dice / IoU on the test split (mean over the runs analysed)", "",
+        "| Model | bladder | rectum | prostate | bone | body | background |", "|---|---|---|---|---|---|---|"]
+for group, runs in GROUPS.items():
+    cells = []
+    for cname in ("bladder", "rectum", "prostate", "bone", "body", "background"):
+        d = [v for v in (analysis_mean(r, f"dice_{cname}") for r in runs) if v is not None]
+        i = [v for v in (analysis_mean(r, f"iou_{cname}") for r in runs) if v is not None]
+        cells.append(f"{mean(d):.3f} / {mean(i):.3f}" if d else "n/a")
+    out.append(f"| {group} | " + " | ".join(cells) + " |")
+
 text = "\n".join(out) + "\n"
 with open("results/summary.md", "w") as f:
     f.write(text)
