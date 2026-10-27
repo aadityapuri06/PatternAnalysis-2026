@@ -233,7 +233,7 @@ Peak memory is the peak GPU memory during training (one batch of 16 slices for t
 | 3D Improved U-Net (matched) | 8.27 M | 15.2 GB | 68.7 min (40 epochs) | 0.15 s |
 | 3D Improved U-Net (first run) | 8.27 M | 15.2 GB | 86.9 min (50 epochs) | 0.16 s |
 
-Wall-clock times of repeat runs differ by up to about 50% between nodes (for example 27-40 minutes for the baseline), so the times are indicative. Compared with the baseline, the 3D model needs about 4.8x the peak training memory and 2.6x (matched) to 3.3x (first run) the training time, which is below the 5-10x warned about in the task sheet. It has fewer parameters than the 2D Improved U-Net: its cost is the memory for its feature maps, not the size of the model.
+Wall-clock times of repeat runs differ by up to about 45% between identical runs (for example 26-38 minutes for the baseline), so the times are indicative. Compared with the baseline, the 3D model needs about 4.8x the peak training memory and 2.6x (matched) to 3.3x (first run) the training time, which is below the 5-10x warned about in the task sheet. It has fewer parameters than the 2D Improved U-Net: its cost is the memory for its feature maps, not the size of the model.
 
 ### 6.6 Training curves
 
