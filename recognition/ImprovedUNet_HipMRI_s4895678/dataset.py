@@ -14,9 +14,12 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
+# Where the HipMRI data lives on Rangpur: MRI volumes (LFOV) and the matching label
+# volumes (SEMANTIC). Change DATA_DIR if the data is stored somewhere else.
 DATA_DIR = "/home/groups/comp3710/HipMRI_Study_open"
 IMAGE_DIR = f"{DATA_DIR}/semantic_MRs"
 LABEL_DIR = f"{DATA_DIR}/semantic_labels_only"
+# The saved split: every script reads this file, so all models use identical patients.
 SPLIT_CSV = "results/split.csv"
 
 
@@ -27,6 +30,7 @@ def list_cases():
 
 
 def image_path(case):
+    """Path of the MRI file for a case name such as 'B040_Week3'."""
     return f"{IMAGE_DIR}/{case}_LFOV.nii.gz"
 
 
@@ -47,16 +51,22 @@ def make_split(val_frac=0.15, test_frac=0.15, seed=42):
     single = 1, otherwise partial) and each group is split separately, so
     train/val/test get a similar mix. Returns {case_name: 'train'|'val'|'test'}.
     """
+    # 1. Group the scans (cases) by patient.
     by_patient = defaultdict(list)
     for case in list_cases():
         by_patient[patient_of(case)].append(case)
 
+    # 2. Put each patient in a stratum by number of scans, so that each split gets a
+    #    similar mix of full-course, single-scan and partial-course patients.
     strata = defaultdict(list)
     for patient, cases in by_patient.items():
         n = len(cases)
         key = "full" if n == 8 else ("single" if n == 1 else "partial")
         strata[key].append(patient)
 
+    # 3. Inside each stratum, shuffle the patients with a fixed seed (reproducible), then
+    #    the first n_test go to test, the next n_val to validation and the rest to train.
+    #    max(1, ...) makes sure each stratum gives at least one patient to val and test.
     rng = random.Random(seed)
     patient_split = {}
     for key in sorted(strata):
@@ -72,10 +82,12 @@ def make_split(val_frac=0.15, test_frac=0.15, seed=42):
             else:
                 patient_split[p] = "train"
 
+    # 4. Every scan inherits the split of its patient, so no patient is ever shared.
     return {c: patient_split[patient_of(c)] for c in list_cases()}
 
 
 def save_split(split, path=SPLIT_CSV):
+    """Write the split to a CSV with columns case, patient, split."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", newline="") as f:
         w = csv.writer(f)
@@ -85,6 +97,7 @@ def save_split(split, path=SPLIT_CSV):
 
 
 def load_split(path=SPLIT_CSV):
+    """Read the saved split back as {case_name: 'train'|'val'|'test'}."""
     with open(path) as f:
         return {r["case"]: r["split"] for r in csv.DictReader(f)}
 
@@ -105,10 +118,10 @@ PROSTATE = 5   # label value for the prostate (inferred from the audit)
 def fix_depth(arr, depth=DEPTH):
     """Centre-crop or zero-pad the slice axis (axis 2) to `depth` slices."""
     d = arr.shape[2]
-    if d > depth:
+    if d > depth:      # too many slices: keep the middle `depth` ones
         start = (d - depth) // 2
         return arr[:, :, start:start + depth]
-    if d < depth:
+    if d < depth:      # too few slices: add empty (zero) slices equally at both ends
         pad = depth - d
         before = pad // 2
         return np.pad(arr, ((0, 0), (0, 0), (before, pad - before)))
@@ -117,13 +130,17 @@ def fix_depth(arr, depth=DEPTH):
 
 def load_case(case):
     """Load one scan: returns (image float32 [D,H,W] z-scored, label uint8 [D,H,W])."""
+    # nibabel gives the arrays in (H, W, D) order; the label values are the integers 0-5
     img = np.asarray(nib.load(image_path(case)).dataobj).astype(np.float32)
     lab = np.asarray(nib.load(label_path(case)).dataobj).astype(np.uint8)
     if img.ndim == 4:        # some files carry an extra trailing dimension
         img = img[..., 0]
     if lab.ndim == 4:
         lab = lab[..., 0]
+    # the same crop/pad for image and label keeps them aligned
     img, lab = fix_depth(img), fix_depth(lab)
+    # z-score per volume (zero mean, unit variance): MRI intensities have no fixed scale,
+    # so this puts every scan on a comparable scale; 1e-8 avoids dividing by zero
     img = (img - img.mean()) / (img.std() + 1e-8)
     # (H, W, D) -> (D, H, W) so that img[z] is one axial slice
     return (np.ascontiguousarray(img.transpose(2, 0, 1)),
@@ -137,8 +154,12 @@ def random_flip(x, y):
     and y is [B,H,W] or [B,D,H,W]. Image and label are always flipped together,
     so they stay aligned. The height axis is the patient's left-right direction.
     """
+    # one random yes/no per sample in the batch (True = flip this sample)
     flip = torch.rand(x.shape[0], device=x.device) < 0.5
     ax = x.ndim - 2     # height axis of x: 2 for [B,1,H,W], 3 for [B,1,D,H,W]
+    # flip.view(...) reshapes the yes/no vector so it broadcasts over all other axes;
+    # torch.where takes the flipped copy only for samples marked True. The label has no
+    # channel axis, so its height axis is one lower (ax - 1).
     x = torch.where(flip.view(-1, *([1] * (x.ndim - 1))), x.flip(ax), x)
     y = torch.where(flip.view(-1, *([1] * (y.ndim - 1))), y.flip(ax - 1), y)
     return x, y
@@ -175,11 +196,13 @@ class HipMRI2D(Dataset):
             img, lab = load_case(case)
             self.imgs.append(img.astype(np.float16))   # halves memory
             self.labs.append(lab)
+            # which slices of this volume contain at least one prostate voxel
             has = (lab == PROSTATE).any(axis=(1, 2))
             pos = np.flatnonzero(has).tolist()
             neg = np.flatnonzero(~has).tolist()
-            if empty_ratio is not None:
+            if empty_ratio is not None:    # training: keep only some prostate-free slices
                 neg = rng.sample(neg, min(len(neg), int(empty_ratio * len(pos))))
+            # index maps a dataset position to (volume number, slice number)
             self.index += [(k, z) for z in sorted(pos + neg)]
 
     def __len__(self):
@@ -218,6 +241,7 @@ class HipMRI3DCached(Dataset):
 
 
 if __name__ == "__main__":
+    # Build the split, check there is no leakage, save it and print its sizes.
     split = make_split()
     check_no_leakage(split)
     save_split(split)
