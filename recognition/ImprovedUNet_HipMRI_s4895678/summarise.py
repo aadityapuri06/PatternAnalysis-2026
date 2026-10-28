@@ -8,6 +8,7 @@ import csv
 import os
 import statistics as st
 
+# Each group is the set of runs (training seeds) whose results are averaged; names match the files in results/.
 GROUPS = {
     "2D U-Net (baseline)": ["unet2d", "unet2d_s1", "unet2d_s2"],
     "2D Improved U-Net": ["improved2d", "improved2d_s1", "improved2d_s2"],
@@ -15,6 +16,7 @@ GROUPS = {
     "3D Improved U-Net (lr 5e-4, 50 epochs)": ["improved3d"],
     "2D Improved U-Net (lr 5e-4)": ["improved2d_lr5e4"],
 }
+# The six test patients (the columns of the per-patient table).
 PATIENTS = ["B006", "G021", "K018", "S035", "T009", "W029"]
 
 
@@ -47,10 +49,12 @@ def analysis_mean(run, key):
     return None if rows is None else mean([float(r[key]) for r in rows])
 
 
+# Table 1: test prostate Dice per run, then mean and standard deviation over the runs of each group.
 out = []
 
 out += ["## Test prostate Dice (mean over the 28 test volumes, per run)", "",
         "| Model | Runs | Mean ± std over runs |", "|---|---|---|"]
+# Per patient: average the scans inside a run, then average over the runs.
 patient_means = {}
 for group, runs in GROUPS.items():
     vals, by_patient = [], {}
@@ -64,6 +68,7 @@ for group, runs in GROUPS.items():
     patient_means[group] = {p: mean([mean(v) for v in d.values()]) for p, d in by_patient.items()}
     out.append(f"| {group} | {', '.join(f'{v:.3f}' for v in vals) or 'n/a'} | {fmt(vals)} |")
 
+# Table 2: prostate Dice per test patient.
 out += ["", "## Prostate Dice per test patient (mean over runs)", "",
         "| Model | " + " | ".join(PATIENTS) + " |", "|---|" + "---|" * len(PATIENTS)]
 for group, pm in patient_means.items():
@@ -73,6 +78,7 @@ if base and three_d:
     wins = sum(three_d[p] > base[p] for p in PATIENTS if p in base and p in three_d)
     out += ["", f"3D (matched) beats the 2D baseline on {wins} of {len(PATIENTS)} test patients."]
 
+# Table 3: base/middle/apex Dice, leakage (as %) and inference time, from the analysis files.
 out += ["", "## Dice by prostate third, rectum/bladder leakage and inference time (from predict.py --analyse)", "",
         "| Model | Base | Middle | Apex | Leak rectum % | Leak bladder % | s / volume |", "|---|---|---|---|---|---|---|"]
 for group, runs in GROUPS.items():
@@ -87,6 +93,7 @@ for group, runs in GROUPS.items():
     cells.append(f"{mean(vals):.2f}" if vals else "n/a")
     out.append(f"| {group} | " + " | ".join(cells) + " |")
 
+# Table 4: Dice and IoU for every class.
 out += ["", "## Per-class Dice / IoU on the test split (mean over the runs analysed)", "",
         "| Model | bladder | rectum | prostate | bone | body | background |", "|---|---|---|---|---|---|---|"]
 for group, runs in GROUPS.items():
@@ -97,6 +104,7 @@ for group, runs in GROUPS.items():
         cells.append(f"{mean(d):.3f} / {mean(i):.3f}" if d else "n/a")
     out.append(f"| {group} | " + " | ".join(cells) + " |")
 
+# Save the tables as markdown and print them.
 text = "\n".join(out) + "\n"
 with open("results/summary.md", "w") as f:
     f.write(text)

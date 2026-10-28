@@ -6,8 +6,9 @@
 #SBATCH --time=03:00:00
 #SBATCH --output=outputs/%x_%j.out
 #SBATCH --error=outputs/%x_%j.err
+# 2D Improved U-Net, 40 epochs, seed 0.
 
-# Usage: sbatch train.sh        (logs go to outputs/, which git ignores)
+# Usage: sbatch train_improved2d.sh        (logs go to outputs/, which git ignores)
 # No --mem line on purpose: this cluster rejects explicit memory requests.
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate base

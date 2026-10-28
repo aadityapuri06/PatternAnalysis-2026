@@ -14,6 +14,7 @@ from train import NUM_CLASSES, dice_loss
 
 
 def test_split_has_no_patient_leakage():
+    # raises AssertionError if any patient appears in more than one split
     check_no_leakage(load_split())
 
 
@@ -27,6 +28,7 @@ def test_random_flip_keeps_image_and_label_aligned():
 
 
 def test_model_output_shapes():
+    # (model, input shape): a small base width and image size keep the check fast on a CPU
     cases = [
         (UNet2D(base=4), (2, 1, 32, 32)),
         (ImprovedUNet(dim=2, base=4), (2, 1, 32, 32)),
@@ -40,6 +42,7 @@ def test_model_output_shapes():
 
 def test_dice_loss_small_for_perfect_and_large_for_wrong_prediction():
     target = torch.randint(0, NUM_CLASSES, (2, 16, 16))
+    # logits of 100 on the right class (perfect) or on a shifted class (wrong everywhere)
     perfect = F.one_hot(target, NUM_CLASSES).movedim(-1, 1).float() * 100
     wrong = F.one_hot((target + 1) % NUM_CLASSES, NUM_CLASSES).movedim(-1, 1).float() * 100
     assert dice_loss(perfect, target) < 0.01

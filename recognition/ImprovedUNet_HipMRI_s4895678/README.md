@@ -295,7 +295,7 @@ The true prostate covers slices 52-71 and shrinks from 165 pixels (slice 63) to 
 
 ![Case 2](images/autopsy_2_G021_Week5.png)
 
-On slices 58-62 the true prostate is *not* tiny (152-276 px), yet the 2D U-Net's Dice falls from 0.41 to 0.00 (it predicts 82, 56, 4, 0 and 0 px) and the 2D Improved U-Net predicts 3-52 px (Dice 0.00-0.24). The 3D model holds on (Dice 0.65-0.75 on the same slices). This is the clearest example of a **slice-transition error** that a slice-by-slice model makes and a volumetric model avoids. At the very last slices (63-65) the 3D model is also weak: on slice 65 it predicts about the right amount of prostate (125 px against 98 px) but shifted towards the bladder (Dice 0.30). **Suspected trigger (2D):** each slice is judged on its own, and on these slices the prostate looks like the surrounding tissue; neighbouring slices, which the 3D model can use, show where it must be.
+On slices 58-62 the true prostate is *not* tiny (152-276 px), yet the 2D U-Net's Dice falls from 0.41 to 0.00 (it predicts 82, 56, 4, 0 and 0 px) and the 2D Improved U-Net predicts 3-52 px (Dice 0.00-0.24). The 3D model holds on (Dice 0.65-0.75 on the same slices). This is the clearest example of a **slice-transition error** that a slice-by-slice model makes and a volumetric model avoids. At the very last slices (63-65) the 3D model is also weak: on slice 65 it predicts about the right amount of prostate (125 px against 98 px) but shifted towards the bladder (Dice 0.30). **Suspected trigger (2D):** each slice is judged on its own, and on these slices the prostate looks like the surrounding tissue; neighbouring slices, which the 3D model can use, show where it must be. The figure rows show each model's own worst slice: z61 (Dice 0.00) for the 2D U-Net, z60 (0.00) for the 2D Improved U-Net and z65 (0.30) for the 3D model.
 
 ### Case 3: G021_Week7 - three different errors in the same patient
 
@@ -344,8 +344,8 @@ T009 is the easiest patient (mean Dice 0.89-0.92). Even here each model's worst 
 
 - the image/label alignment was checked visually (`images/overlay_check.png`);
 - the patient-level split is checked by an assertion (`check_no_leakage`) and by `test_pipeline.py`;
-- when the augmentation was moved from `train.py` to `dataset.py`, I confirmed on random data that the new function gives identical output to the old code, and ran a one-epoch end-to-end training job afterwards;
-- peak GPU memory was measured with a dedicated probe (`probe_3d_memory.py`) and during training, not estimated;
+- when the augmentation was moved from `train.py` to `dataset.py`, I confirmed on random data that the new function gives identical output to the old code; a self-check (`test_random_flip_keeps_image_and_label_aligned`) now covers it, and the repeat-seed runs were trained with the moved function and gave results in the range of the earlier runs;
+- 3D memory was first probed on random data at several sizes (`probe_3d_memory.py`) to choose a model size that fits one GPU, and the reported peak (15.2 GB) is the value measured during the real training run, not an estimate;
 - every number in the results tables is generated from the CSV files by `summarise.py`, not typed by hand;
 - repeated runs with three seeds were run to check how much the results change by chance.
 
@@ -358,4 +358,4 @@ Numbers [1], [2] and [4] follow the reference list in the course task sheet; [A]
 - [A] F. Milletari, N. Navab, S.-A. Ahmadi. *V-Net: Fully Convolutional Neural Networks for Volumetric Medical Image Segmentation.* 3DV 2016 (the Dice loss).
 - [4] O. Cicek, A. Abdulkadir, S. S. Lienkamp, T. Brox, O. Ronneberger. *3D U-Net: Learning Dense Volumetric Segmentation from Sparse Annotation.* MICCAI 2016.
 
-**Data.** The HipMRI Study data (prostate MRI volumes and segmentations) was provided through the COMP3710 course; the study is described at doi:10.1016/j.ijrobp.2015.08.045. Data and trained model files are not included in this repository.
+**Data.** The HipMRI Study data (prostate MRI volumes and segmentations) was provided through the COMP3710 course and is used under the HipMRI Study data use terms (non-commercial use; no attempt to identify participants). Acknowledgments: Data were provided in part by the HipMRI Study, made available through the University of Queensland COMP3710 course. Citation: HipMRI Study for MRI-alone treatment planning, https://doi.org/10.1016/j.ijrobp.2015.08.045. Data and trained model files are not included in this repository.

@@ -6,6 +6,7 @@
 #SBATCH --time=03:30:00
 #SBATCH --output=outputs/%x_%j.out
 #SBATCH --error=outputs/%x_%j.err
+# First 3D Improved U-Net run: lr 5e-4, 50 epochs (the matched run is train3d_matched.sh).
 
 # No --mem line on purpose: this cluster rejects explicit memory requests.
 source ~/miniconda3/etc/profile.d/conda.sh

@@ -6,6 +6,7 @@
 #SBATCH --time=00:30:00
 #SBATCH --output=outputs/%x_%j.out
 #SBATCH --error=outputs/%x_%j.err
+# Analyse the three first-run models on the test split and save the four-panel failure figures.
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate base
 cd ~/PatternAnalysis-2026/recognition/ImprovedUNet_HipMRI_s4895678

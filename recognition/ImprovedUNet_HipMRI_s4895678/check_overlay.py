@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import os
 from dataset import load_case, PROSTATE
 
+# Sanity check of the data pipeline: if the red outline sits on the prostate, image and label are aligned.
 case = "M015_Week0"
 img, lab = load_case(case)
 z = int((lab == PROSTATE).sum(axis=(1, 2)).argmax())   # slice with most prostate

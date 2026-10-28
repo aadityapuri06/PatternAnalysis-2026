@@ -11,18 +11,22 @@ DATA_DIR = "/home/groups/comp3710/HipMRI_Study_open"
 LABEL_DIR = f"{DATA_DIR}/semantic_labels_only"
 PROSTATE = 5  # our inference from the first volume; this script tests it
 
+# One row per label volume; file names look like B040_Week0_SEMANTIC.nii.gz.
 rows = []
 for name in tqdm(sorted(os.listdir(LABEL_DIR))):
     case = name.replace("_SEMANTIC.nii.gz", "")
     patient, week = case.split("_")[0], case.split("_")[1]
 
+    # read the label volume; its header holds the voxel size
     lab = nib.load(f"{LABEL_DIR}/{name}")
     y = np.asarray(lab.dataobj).astype(np.int16)
     if y.ndim == 4:                      # some files carry an extra dimension
         y = y[..., 0]
 
+    # voxel size in mm (x, y, z) and the volume of one voxel in mL (1 mL = 1000 mm^3)
     zooms = tuple(round(float(z), 3) for z in lab.header.get_zooms()[:3])
     voxel_ml = float(np.prod(zooms)) / 1000.0
+    # prostate size in voxels, in mL, and the number of slices that contain it
     prostate = (y == PROSTATE)
     n_vox = int(prostate.sum())
     slices_with_prostate = int(prostate.any(axis=(0, 1)).sum())
@@ -36,6 +40,7 @@ for name in tqdm(sorted(os.listdir(LABEL_DIR))):
         "prostate_slices": slices_with_prostate,
     })
 
+# Save the table, then print a summary: shapes, voxel sizes, label values, prostate sizes.
 os.makedirs("results", exist_ok=True)
 with open("results/audit.csv", "w", newline="") as f:
     writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
