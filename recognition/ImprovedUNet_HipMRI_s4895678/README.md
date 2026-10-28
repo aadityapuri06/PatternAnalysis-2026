@@ -84,7 +84,7 @@ Chosen model: **3D Improved U-Net** (Hard difficulty), benchmarked against a **2
 
 ## 3. Data, pre-processing and splits
 
-**Data.** The HipMRI Study 3D data on Rangpur (`/home/groups/comp3710/HipMRI_Study_open`): 211 pelvic T2 MRI volumes from 38 patients (`semantic_MRs`) with matching label volumes (`semantic_labels_only`). The labels were drawn in 3D by an MR physicist and contain six classes: 0 background, 1 body, 2 bone, 3 bladder, 4 rectum, 5 prostate. Volumes are read with nibabel, following the Nifti loading example in Appendix B of the task sheet. A patient can have up to 8 scans (weekly during treatment).
+**Data.** The HipMRI Study 3D data on Rangpur (`/home/groups/comp3710/HipMRI_Study_open`): 211 pelvic MRI volumes from 38 patients (`semantic_MRs`) with matching label volumes (`semantic_labels_only`). The labels were drawn in 3D by an MR physicist and contain six classes: 0 background, 1 body, 2 bone, 3 bladder, 4 rectum, 5 prostate. Volumes are read with nibabel, following the Nifti loading example in Appendix B of the task sheet. A patient can have up to 8 scans (weekly during treatment).
 
 **Pre-processing** (`dataset.py`, function `load_case`):
 
@@ -273,7 +273,7 @@ The slice-level counts below come from the first 3D run and the seed-0 2D runs (
 
 Volumes with a run of at least two consecutive dropout slices: 10 of 28 (2D U-Net), 12 of 28 (2D Improved), 3 of 28 (3D).
 
-So 3D removes most of the **missing-prostate** failures, which are concentrated at the base, but it **trades them for over-sized contours**, at the base and also at the apex. Over-contouring is the error that irradiates the rectum and bladder, so the trade is not automatically good. The measured leakage is still lower for 3D, because the extra voxels are mostly not on the rectum or bladder.
+So 3D removes most of the **missing-prostate** failures, which are concentrated at the base, but it **trades them for over-sized contours**, at the base and also at the apex. Over-contouring is the error that irradiates the rectum and bladder, so the trade is not automatically good. The measured leakage onto the rectum and bladder is still lower for 3D, so the extra voxels are mostly elsewhere (where exactly was not examined).
 
 ![Per-slice prostate Dice along the slice axis for three test volumes (first 3D run; the base end is the high-index end).](images/slice_profile.png)
 
@@ -289,7 +289,7 @@ Each figure stacks, from top to bottom, the 2D U-Net, the 2D Improved U-Net and 
 
 ![Case 1](images/autopsy_1_W029_Week5.png)
 
-The true prostate covers slices 52-71 and shrinks from 165 pixels (slice 63) to 35 pixels (slice 70) towards the base, right under the bright bladder. On slices 64-66 *every* model draws a contour about 3-6x too large (true 68-113 px, predicted 284-412 px). On slices 67-71 the two 2D models predict almost nothing (0-10 px, Dice 0.00-0.17), while the 3D model keeps predicting a contour but too large (98-254 px against a true 35-62 px, Dice 0.38-0.50). **Failure types:** over-contouring then dropout (2D); persistent over-contouring (3D). **Suspected trigger:** a small, quickly tapering target next to a very bright, large structure. W029's prostate is small on these slices (at most 165 px per slice, against 343 px for G021_Week7), and W029 is the hardest patient for every model, but whether size is the cause was not tested.
+The true prostate covers slices 52-71 and shrinks from 165 pixels (slice 63) to 35 pixels (slice 70) towards the base, right under the bright bladder. On slices 64-66 *every* model draws a contour about 3-6x too large (true 68-113 px, predicted 284-412 px). On slices 67-71 the two 2D models predict almost nothing (0-10 px, Dice 0.00-0.17), while the 3D model keeps predicting a contour but too large (98-254 px against a true 35-62 px, Dice 0.38-0.50). **Failure types:** over-contouring then dropout (2D); persistent over-contouring (3D). **Suspected trigger:** a small, quickly tapering target next to a very bright, large structure. W029's prostate is small on these slices (at most 165 px per slice, against 343 px for G021_Week7), and W029 is the hardest patient for every model, but whether size is the cause was not tested. The figure rows show each model's own worst slice: z70 (Dice 0.00) for the 2D U-Net, z68 (0.00) for the 2D Improved U-Net and z65 (0.36) for the 3D model.
 
 ### Case 2: G021_Week5 - a run of missed slices in the 2D models
 
@@ -358,4 +358,4 @@ Numbers [1], [2] and [4] follow the reference list in the course task sheet; [A]
 - [A] F. Milletari, N. Navab, S.-A. Ahmadi. *V-Net: Fully Convolutional Neural Networks for Volumetric Medical Image Segmentation.* 3DV 2016 (the Dice loss).
 - [4] O. Cicek, A. Abdulkadir, S. S. Lienkamp, T. Brox, O. Ronneberger. *3D U-Net: Learning Dense Volumetric Segmentation from Sparse Annotation.* MICCAI 2016.
 
-**Data.** The HipMRI Study data (prostate MRI volumes and segmentations, provided through the COMP3710 course) is used under its data-use agreement; the study is described at doi:10.1016/j.ijrobp.2015.08.045. Data and trained model files are not included in this repository.
+**Data.** The HipMRI Study data (prostate MRI volumes and segmentations) was provided through the COMP3710 course; the study is described at doi:10.1016/j.ijrobp.2015.08.045. Data and trained model files are not included in this repository.
