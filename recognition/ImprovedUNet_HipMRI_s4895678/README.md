@@ -64,7 +64,7 @@ Chosen model: **3D Improved U-Net** (Hard difficulty), benchmarked against a **2
 - **Learned convolutional features.** A CNN learns its filters from data and stacks them into a hierarchy, from edges to organ shapes. Segmentation needs wide context to recognise the prostate and fine detail to place its boundary.
 - **Encoder-decoder with skip connections** (Ronneberger et al. 2015 [1]). The encoder shrinks the image to gather context and the decoder restores resolution. Skip connections pass fine detail across, which sharpens boundaries, and the base and apex boundaries are what the dilemma is about.
 - **3D convolution** (Cicek et al. 2016 [4]). Kernels span neighbouring slices, so the model can use inter-slice continuity that a 2D model cannot.
-- **Residual context modules and deep supervision** (Isensee et al. 2018 [2]). Residual connections ease the training of a deeper network, and summing segmentation maps from several decoder levels gives earlier layers a short path to the loss. Instance normalisation suits training on one volume per step.
+- **Residual context modules and deep supervision** (Isensee et al. 2018 [2]). Residual connections ease the training of a deeper network, and summing segmentation maps from several decoder levels gives earlier layers a short path to the loss. Instance normalisation suits training on one volume per step. One simplification: our context module is post-activation (convolution, normalisation, activation), whereas the paper uses a pre-activation residual block.
 - **Loss design for class imbalance.** The prostate is about 0.08% of voxels, so a model can reach high accuracy while missing it. Dice loss scores overlap per class, and cross-entropy is added for stable early training.
 - **Evaluation hygiene.** Scans of one patient are near-duplicates, so the split is by patient to prevent leakage.
 
@@ -289,7 +289,7 @@ Each figure stacks, from top to bottom, the 2D U-Net, the 2D Improved U-Net and 
 
 ![Case 1](images/autopsy_1_W029_Week5.png)
 
-The true prostate covers slices 52-71 and shrinks from 165 pixels (slice 63) to 35 pixels (slice 70) towards the base, right under the bright bladder. On slices 64-66 *every* model draws a contour 3-6x too large (true 68-113 px, predicted 285-412 px). On slices 67-71 the two 2D models predict almost nothing (0-10 px, Dice 0.00-0.17), while the 3D model keeps predicting a contour but too large (98-254 px against a true 35-62 px, Dice 0.38-0.50). **Failure types:** over-contouring then dropout (2D); persistent over-contouring (3D). **Suspected trigger:** a small, quickly tapering target next to a very bright, large structure. W029 is also the patient with the smallest prostate in the test set (at most 165 px per slice, against 343 px for G021_Week7), and that is the hardest patient for every model, but whether size is the cause was not tested.
+The true prostate covers slices 52-71 and shrinks from 165 pixels (slice 63) to 35 pixels (slice 70) towards the base, right under the bright bladder. On slices 64-66 *every* model draws a contour about 3-6x too large (true 68-113 px, predicted 284-412 px). On slices 67-71 the two 2D models predict almost nothing (0-10 px, Dice 0.00-0.17), while the 3D model keeps predicting a contour but too large (98-254 px against a true 35-62 px, Dice 0.38-0.50). **Failure types:** over-contouring then dropout (2D); persistent over-contouring (3D). **Suspected trigger:** a small, quickly tapering target next to a very bright, large structure. W029's prostate is small on these slices (at most 165 px per slice, against 343 px for G021_Week7), and W029 is the hardest patient for every model, but whether size is the cause was not tested.
 
 ### Case 2: G021_Week5 - a run of missed slices in the 2D models
 
@@ -307,7 +307,7 @@ The same patient on a later week. The 2D U-Net's worst slice (z43, the apex end,
 
 ![Case 4](images/autopsy_4_T009_Week0.png)
 
-T009 is the easiest patient (mean Dice 0.90-0.92). Even here each model's worst slice reaches only Dice 0.69-0.73 (z48, z48 and z76). Nothing is missed: the prediction and the truth overlap, and the errors are a thin rim of false positive and false negative around the boundary. **Failure type:** small boundary offsets. This is the ordinary, expected error. It matters because a clinician reviewing the outline would still need to adjust it.
+T009 is the easiest patient (mean Dice 0.89-0.92). Even here each model's worst slice reaches only Dice 0.69-0.73 (z48, z48 and z76). Nothing is missed: the prediction and the truth overlap, and the errors are a thin rim of false positive and false negative around the boundary. **Failure type:** small boundary offsets. This is the ordinary, expected error. It matters because a clinician reviewing the outline would still need to adjust it.
 
 ## 9. Recommendation to the project manager
 
