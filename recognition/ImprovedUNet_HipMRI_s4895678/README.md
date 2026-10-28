@@ -125,7 +125,7 @@ For the **2D models**, each training slice is one axial slice. Training uses eve
 | Epochs, batch | 40, 16 slices | 40, 16 slices | 40 or 50, 1 volume |
 | Seeds | 0, 1, 2 | 0, 1, 2 | 0, 1, 2 (matched settings) |
 
-**Loss** (`train.py`): cross-entropy plus soft Dice loss, added with equal weight. The Dice term [3] is averaged over the five foreground classes (background excluded) and pools over the batch and all spatial axes. Deep supervision enters through the network: the three segmentation heads are summed into one output, and one loss is applied to it.
+**Loss** (`train.py`): cross-entropy plus soft Dice loss, added with equal weight. The Dice term [A] is averaged over the five foreground classes (background excluded) and pools over the batch and all spatial axes. Deep supervision enters through the network: the three segmentation heads are summed into one output, and one loss is applied to it.
 
 **Which 3D run is the headline?** The baseline was trained with lr 1e-3 for 40 epochs, but the first 3D run used lr 5e-4 for 50 epochs. That left open whether the 3D gain came from 3D context or from different tuning, so the **matched-settings** 3D run (lr 1e-3, 40 epochs, as in the baseline) was planned as the controlled comparison. It is the headline 3D result, repeated with three seeds. The first 3D run is reported as a secondary result, and the failure analysis in Sections 7.2 and 8 was done on that first run (its test Dice, 0.761, is within seed noise of the matched runs).
 
@@ -351,11 +351,11 @@ T009 is the easiest patient (mean Dice 0.90-0.92). Even here each model's worst 
 
 ## 12. References and data acknowledgement
 
-The reference numbers follow the course task sheet where a reference appears there.
+Numbers [1], [2] and [4] follow the reference list in the course task sheet; [A] is an additional reference.
 
 - [1] O. Ronneberger, P. Fischer, T. Brox. *U-Net: Convolutional Networks for Biomedical Image Segmentation.* MICCAI 2015.
 - [2] F. Isensee, P. Kickingereder, W. Wick, M. Bendszus, K. H. Maier-Hein. *Brain Tumor Segmentation and Radiomics Survival Prediction: Contribution to the BRATS 2017 Challenge.* BrainLes 2017 (Lecture Notes in Computer Science 10670), 2018.
-- [3] F. Milletari, N. Navab, S.-A. Ahmadi. *V-Net: Fully Convolutional Neural Networks for Volumetric Medical Image Segmentation.* 3DV 2016 (the Dice loss).
+- [A] F. Milletari, N. Navab, S.-A. Ahmadi. *V-Net: Fully Convolutional Neural Networks for Volumetric Medical Image Segmentation.* 3DV 2016 (the Dice loss).
 - [4] O. Cicek, A. Abdulkadir, S. S. Lienkamp, T. Brox, O. Ronneberger. *3D U-Net: Learning Dense Volumetric Segmentation from Sparse Annotation.* MICCAI 2016.
 
 **Data.** The HipMRI Study data (prostate MRI volumes and segmentations, provided through the COMP3710 course) is used under its data-use agreement; the study is described at doi:10.1016/j.ijrobp.2015.08.045. Data and trained model files are not included in this repository.
