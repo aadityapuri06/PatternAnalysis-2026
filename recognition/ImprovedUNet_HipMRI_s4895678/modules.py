@@ -25,6 +25,7 @@ class DoubleConv2D(nn.Module):
         )
 
     def forward(self, x):
+        """Apply both convolutions: [B, in_ch, H, W] -> [B, out_ch, H, W]."""
         return self.block(x)
 
 
@@ -32,6 +33,9 @@ class UNet2D(nn.Module):
     """Standard 2D U-Net. Input [B,1,H,W] -> logits [B,num_classes,H,W].
 
     H and W must be divisible by 2**depth (256 is fine for depth=4).
+
+    Args: in_channels = image channels (1 for MRI), num_classes = labels (6), base = filters
+    in the first level (doubled at every level), depth = number of downsampling steps.
     """
 
     def __init__(self, in_channels=1, num_classes=6, base=32, depth=4):
@@ -57,6 +61,7 @@ class UNet2D(nn.Module):
         self.head = nn.Conv2d(chs[0], num_classes, 1)     # 1x1 conv -> class scores
 
     def forward(self, x):
+        """Encoder, bottleneck, decoder with skip connections; returns class logits per pixel."""
         skips = []
         for block in self.enc:
             x = block(x)
@@ -98,6 +103,7 @@ class ConvNormAct(nn.Module):
         )
 
     def forward(self, x):
+        """Convolution, instance norm and leaky ReLU; stride 2 halves each spatial size."""
         return self.block(x)
 
 
@@ -111,6 +117,7 @@ class ContextModule(nn.Module):
             ConvNormAct(ch, ch, dim), Drop(p_drop), ConvNormAct(ch, ch, dim))
 
     def forward(self, x):
+        """Return the input plus the output of the two convolutions (same shape as the input)."""
         return x + self.body(x)          # residual: the input is added back
 
 
@@ -120,6 +127,10 @@ class ImprovedUNet(nn.Module):
     are upsampled and summed). Returns logits [B, num_classes, *spatial].
 
     Spatial sizes must be divisible by 2**(depth-1).
+
+    Args: dim = 2 (slices) or 3 (volumes), in_channels = image channels, num_classes = labels,
+    base = filters in the first level (doubled per level), depth = number of levels,
+    p_drop = dropout probability inside the context modules.
     """
 
     def __init__(self, dim=2, in_channels=1, num_classes=6, base=32, depth=5, p_drop=0.3):
@@ -150,6 +161,8 @@ class ImprovedUNet(nn.Module):
         self.up_seg = nn.Upsample(scale_factor=2, mode="nearest")
 
     def forward(self, x):
+        """Encode with skips, decode with localization modules, and sum the segmentation
+        maps of the last levels (deep supervision) into logits [B, num_classes, *spatial]."""
         x = self.ctx[0](self.stem(x))
         skips = [x]
         for i in range(1, self.depth):

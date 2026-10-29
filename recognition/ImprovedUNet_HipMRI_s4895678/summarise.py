@@ -21,6 +21,7 @@ PATIENTS = ["B006", "G021", "K018", "S035", "T009", "W029"]
 
 
 def read(path):
+    """Rows of a CSV file as a list of dicts, or None if the file does not exist."""
     if not os.path.exists(path):
         return None
     with open(path) as f:
@@ -28,6 +29,7 @@ def read(path):
 
 
 def mean(xs):
+    """Arithmetic mean of a non-empty list."""
     return sum(xs) / len(xs)
 
 
@@ -41,10 +43,12 @@ def fmt(xs):
 
 
 def per_volume(run):
+    """Per-volume test Dice rows written by train.py for this run (None if missing)."""
     return read(f"results/{run}_test_per_volume.csv")
 
 
 def analysis_mean(run, key):
+    """Mean over the test volumes of one column of results/<run>_analysis.csv (None if missing)."""
     rows = read(f"results/{run}_analysis.csv")
     return None if rows is None else mean([float(r[key]) for r in rows])
 

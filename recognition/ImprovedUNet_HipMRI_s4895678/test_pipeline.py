@@ -14,11 +14,13 @@ from train import NUM_CLASSES, dice_loss
 
 
 def test_split_has_no_patient_leakage():
+    """The saved split puts every patient in exactly one of train, val and test."""
     # raises AssertionError if any patient appears in more than one split
     check_no_leakage(load_split())
 
 
 def test_random_flip_keeps_image_and_label_aligned():
+    """After random_flip an image that equals its label must still equal it."""
     torch.manual_seed(0)
     y = torch.randint(0, NUM_CLASSES, (32, 16, 16))
     x = y.float()[:, None]                      # an "image" that equals its label
@@ -28,6 +30,7 @@ def test_random_flip_keeps_image_and_label_aligned():
 
 
 def test_model_output_shapes():
+    """Every model returns one logit map per class at the input's spatial size."""
     # (model, input shape): a small base width and image size keep the check fast on a CPU
     cases = [
         (UNet2D(base=4), (2, 1, 32, 32)),
@@ -41,6 +44,7 @@ def test_model_output_shapes():
 
 
 def test_dice_loss_small_for_perfect_and_large_for_wrong_prediction():
+    """Dice loss is near 0 for a perfect prediction and near 1 for a completely wrong one."""
     target = torch.randint(0, NUM_CLASSES, (2, 16, 16))
     # logits of 100 on the right class (perfect) or on a shifted class (wrong everywhere)
     perfect = F.one_hot(target, NUM_CLASSES).movedim(-1, 1).float() * 100

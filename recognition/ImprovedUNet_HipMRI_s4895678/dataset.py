@@ -35,6 +35,7 @@ def image_path(case):
 
 
 def label_path(case):
+    """Path of the label file that matches the MRI of this case."""
     # Images and labels pair by swapping LFOV -> SEMANTIC in the filename.
     return f"{LABEL_DIR}/{case}_SEMANTIC.nii.gz"
 
